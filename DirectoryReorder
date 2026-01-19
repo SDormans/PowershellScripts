@@ -1,0 +1,114 @@
+############################################
+# SECTION 1: Move documents to Personal
+############################################
+
+$SourceFolder   = "F:\"
+$PersonalFolder = "F:\Persoonlijk"
+
+# Document extensions
+$DocumentExtensions = @(
+    ".doc", ".docx", ".pdf",
+    ".xls", ".xlsx", ".csv",
+    ".ppt", ".pptx",
+    ".txt", ".rtf"
+)
+
+# Create Personal folder if it does not exist
+if (-not (Test-Path $PersonalFolder)) {
+    New-Item -ItemType Directory -Path $PersonalFolder | Out-Null
+}
+
+# Move documents
+Get-ChildItem -Path $SourceFolder -Recurse -File |
+Where-Object { $DocumentExtensions -contains $_.Extension.ToLower() } |
+ForEach-Object {
+    $Destination = Join-Path $PersonalFolder $_.Name
+    if (-not (Test-Path $Destination)) {
+        Move-Item $_.FullName $PersonalFolder
+    }
+}
+
+############################################
+# SECTION 2: Organize Photos
+############################################
+
+$PhotoRoot   = "F:\Fotos"
+$OthersFolder = Join-Path $PhotoRoot "Others"
+
+# Photo extensions
+$PhotoExtensions = ".jpg", ".jpeg", ".png", ".heic", ".mp4"
+
+# Create Others folder if needed
+if (-not (Test-Path $OthersFolder)) {
+    New-Item -ItemType Directory -Path $OthersFolder | Out-Null
+}
+
+# Move photos to Photos root
+Get-ChildItem -Path $PhotoRoot -Recurse -File |
+Where-Object { $PhotoExtensions -contains $_.Extension.ToLower() } |
+ForEach-Object {
+    $Destination = Join-Path $PhotoRoot $_.Name
+    if (-not (Test-Path $Destination)) {
+        Move-Item $_.FullName $PhotoRoot
+    }
+}
+
+# Move non-photo files to Others
+Get-ChildItem -Path $PhotoRoot -Recurse -File |
+Where-Object { $PhotoExtensions -notcontains $_.Extension.ToLower() } |
+ForEach-Object {
+    $Destination = Join-Path $OthersFolder $_.Name
+    if (-not (Test-Path $Destination)) {
+        Move-Item $_.FullName $OthersFolder
+    }
+}
+
+# Remove empty folders (excluding Others)
+Get-ChildItem -Path $PhotoRoot -Recurse -Directory |
+Where-Object { $_.FullName -ne $OthersFolder } |
+Sort-Object FullName -Descending |
+Remove-Item -Force
+
+############################################
+# SECTION 3: Organize Music Folders
+############################################
+
+$MusicRoot     = "F:\Muziek"
+$DuplicatesDir = Join-Path $MusicRoot "Duplicates"
+
+# Music extensions
+$MusicExtensions = ".mp3", ".flac", ".wav", ".aac", ".m4a"
+
+# Create Duplicates folder if needed
+if (-not (Test-Path $DuplicatesDir)) {
+    New-Item -ItemType Directory -Path $DuplicatesDir | Out-Null
+}
+
+# Remove all _MACOSX folders
+Get-ChildItem -Path $MusicRoot -Recurse -Directory -Force |
+Where-Object { $_.Name -eq "_MACOSX" } |
+Remove-Item -Recurse -Force
+
+# Process folders from deepest to root
+Get-ChildItem -Path $MusicRoot -Recurse -Directory |
+Sort-Object FullName -Descending |
+ForEach-Object {
+
+    if ($_.FullName -eq $MusicRoot -or $_.FullName -eq $DuplicatesDir) { return }
+
+    $ContainsMusic = Get-ChildItem $_.FullName -Recurse -File |
+        Where-Object { $MusicExtensions -contains $_.Extension.ToLower() } |
+        Select-Object -First 1
+
+    if ($ContainsMusic) {
+        $Destination = Join-Path $MusicRoot $_.Name
+
+        if (Test-Path $Destination) {
+            Move-Item $_.FullName $DuplicatesDir -Force
+        } else {
+            Move-Item $_.FullName $MusicRoot
+        }
+    } else {
+        Remove-Item $_.FullName -Recurse -Force
+    }
+}

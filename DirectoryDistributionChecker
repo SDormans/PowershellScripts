@@ -1,0 +1,54 @@
+param (
+    [Parameter(Mandatory = $true)]
+    [string]$Path
+)
+
+if (-not (Test-Path $Path)) {
+    Write-Error "Path does not exist."
+    exit 1
+}
+
+function Get-DirectoryReport {
+    param (
+        [string]$Directory
+    )
+
+    $files = Get-ChildItem -Path $Directory -Recurse -File -ErrorAction SilentlyContinue
+
+    if (-not $files) {
+        return [PSCustomObject]@{
+            Directory     = $Directory
+            SizeMB        = 0
+            Extensions    = "-"
+        }
+    }
+
+    $sizeMB = [Math]::Round(
+        ($files | Measure-Object -Property Length -Sum).Sum / 1MB, 2
+    )
+
+    $extensions = $files |
+        Where-Object { $_.Extension } |
+        Select-Object -ExpandProperty Extension |
+        Sort-Object -Unique
+
+    [PSCustomObject]@{
+        Directory  = $Directory
+        SizeMB     = $sizeMB
+        Extensions = ($extensions -join ", ")
+    }
+}
+
+# Get root and subdirectories
+$directories = Get-ChildItem -Path $Path -Directory -Recurse -ErrorAction SilentlyContinue
+$directories = @($Path) + $directories.FullName
+
+$report = foreach ($dir in $directories) {
+    Get-DirectoryReport -Directory $dir
+}
+
+# Output as table (CLI friendly)
+$report |
+    Sort-Object SizeMB -Descending |
+    Format-Table -AutoSize
+

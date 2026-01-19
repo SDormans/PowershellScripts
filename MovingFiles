@@ -1,0 +1,38 @@
+# -------- CONFIGURATION --------
+
+$SourceDir   = "C:\Temp\Downloads"
+$PersonalDir = "C:\Users\YourName\Personal"
+$MusicDir    = "C:\Users\YourName\Music"
+$FotosDir    = "C:\Users\YourName\Fotos"
+
+# File extensions
+$DocumentExtensions = ".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".txt"
+$MusicExtensions    = ".mp3", ".wav", ".flac", ".aac"
+$ImageExtensions    = ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff"
+
+# -------- CREATE DIRECTORIES IF NOT EXIST --------
+
+$dirs = @($PersonalDir, $MusicDir, $FotosDir)
+foreach ($dir in $dirs) {
+    if (-not (Test-Path $dir)) {
+        New-Item -ItemType Directory -Path $dir | Out-Null
+    }
+}
+
+# -------- MOVE FILES --------
+
+Get-ChildItem -Path $SourceDir -File | ForEach-Object {
+    $extension = $_.Extension.ToLower()
+
+    if ($DocumentExtensions -contains $extension) {
+        Move-Item $_.FullName -Destination $PersonalDir -Force
+    }
+    elseif ($MusicExtensions -contains $extension) {
+        Move-Item $_.FullName -Destination $MusicDir -Force
+    }
+    elseif ($ImageExtensions -contains $extension) {
+        Move-Item $_.FullName -Destination $FotosDir -Force
+    }
+}
+
+Write-Host "File organization completed successfully."
