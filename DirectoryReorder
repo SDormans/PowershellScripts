@@ -1,11 +1,30 @@
-############################################
-# SECTION 1: Move documents to Personal
-############################################
+<#
+.SYNOPSIS
+    Organizes documents, photos, and music on drive F:\
+
+.DESCRIPTION
+    SECTION 1:
+        - Moves document files into a Personal folder
+
+    SECTION 2:
+        - Consolidates photos into the Photos root
+        - Moves non-photo files into an Others folder
+        - Cleans up empty directories
+
+    SECTION 3:
+        - Cleans music folders
+        - Removes _MACOSX artifacts
+        - Deduplicates album folders
+#>
+
+#################################################
+# SECTION 1: Move Documents to Personal Folder
+#################################################
 
 $SourceFolder   = "F:\"
 $PersonalFolder = "F:\Persoonlijk"
 
-# Document extensions
+# Supported document extensions
 $DocumentExtensions = @(
     ".doc", ".docx", ".pdf",
     ".xls", ".xlsx", ".csv",
@@ -13,102 +32,123 @@ $DocumentExtensions = @(
     ".txt", ".rtf"
 )
 
-# Create Personal folder if it does not exist
-if (-not (Test-Path $PersonalFolder)) {
+# Ensure Personal folder exists
+if (-not (Test-Path -Path $PersonalFolder)) {
     New-Item -ItemType Directory -Path $PersonalFolder | Out-Null
 }
 
-# Move documents
+# Find and move document files
 Get-ChildItem -Path $SourceFolder -Recurse -File |
 Where-Object { $DocumentExtensions -contains $_.Extension.ToLower() } |
 ForEach-Object {
+
     $Destination = Join-Path $PersonalFolder $_.Name
-    if (-not (Test-Path $Destination)) {
-        Move-Item $_.FullName $PersonalFolder
+
+    # Prevent overwriting existing files
+    if (-not (Test-Path -Path $Destination)) {
+        Move-Item -Path $_.FullName -Destination $PersonalFolder
     }
 }
 
-############################################
+#################################################
 # SECTION 2: Organize Photos
-############################################
+#################################################
 
-$PhotoRoot   = "F:\Fotos"
+$PhotoRoot    = "F:\Fotos"
 $OthersFolder = Join-Path $PhotoRoot "Others"
 
-# Photo extensions
-$PhotoExtensions = ".jpg", ".jpeg", ".png", ".heic", ".mp4"
+# Supported photo & video extensions
+$PhotoExtensions = @(
+    ".jpg", ".jpeg", ".png",
+    ".heic", ".mp4"
+)
 
-# Create Others folder if needed
-if (-not (Test-Path $OthersFolder)) {
+# Ensure Others folder exists
+if (-not (Test-Path -Path $OthersFolder)) {
     New-Item -ItemType Directory -Path $OthersFolder | Out-Null
 }
 
-# Move photos to Photos root
+# Move all photos/videos into the Photos root
 Get-ChildItem -Path $PhotoRoot -Recurse -File |
 Where-Object { $PhotoExtensions -contains $_.Extension.ToLower() } |
 ForEach-Object {
+
     $Destination = Join-Path $PhotoRoot $_.Name
-    if (-not (Test-Path $Destination)) {
-        Move-Item $_.FullName $PhotoRoot
+
+    if (-not (Test-Path -Path $Destination)) {
+        Move-Item -Path $_.FullName -Destination $PhotoRoot
     }
 }
 
-# Move non-photo files to Others
+# Move non-photo files into Others
 Get-ChildItem -Path $PhotoRoot -Recurse -File |
 Where-Object { $PhotoExtensions -notcontains $_.Extension.ToLower() } |
 ForEach-Object {
+
     $Destination = Join-Path $OthersFolder $_.Name
-    if (-not (Test-Path $Destination)) {
-        Move-Item $_.FullName $OthersFolder
+
+    if (-not (Test-Path -Path $Destination)) {
+        Move-Item -Path $_.FullName -Destination $OthersFolder
     }
 }
 
-# Remove empty folders (excluding Others)
+# Remove empty directories (excluding Others)
 Get-ChildItem -Path $PhotoRoot -Recurse -Directory |
 Where-Object { $_.FullName -ne $OthersFolder } |
 Sort-Object FullName -Descending |
 Remove-Item -Force
 
-############################################
-# SECTION 3: Organize Music Folders
-############################################
+#################################################
+# SECTION 3: Organize Music Library
+#################################################
 
 $MusicRoot     = "F:\Muziek"
 $DuplicatesDir = Join-Path $MusicRoot "Duplicates"
 
-# Music extensions
-$MusicExtensions = ".mp3", ".flac", ".wav", ".aac", ".m4a"
+# Supported music extensions
+$MusicExtensions = @(
+    ".mp3", ".flac", ".wav",
+    ".aac", ".m4a"
+)
 
-# Create Duplicates folder if needed
-if (-not (Test-Path $DuplicatesDir)) {
+# Ensure Duplicates folder exists
+if (-not (Test-Path -Path $DuplicatesDir)) {
     New-Item -ItemType Directory -Path $DuplicatesDir | Out-Null
 }
 
-# Remove all _MACOSX folders
+# Remove macOS metadata folders
 Get-ChildItem -Path $MusicRoot -Recurse -Directory -Force |
 Where-Object { $_.Name -eq "_MACOSX" } |
 Remove-Item -Recurse -Force
 
-# Process folders from deepest to root
+# Process directories from deepest level upward
 Get-ChildItem -Path $MusicRoot -Recurse -Directory |
 Sort-Object FullName -Descending |
 ForEach-Object {
 
-    if ($_.FullName -eq $MusicRoot -or $_.FullName -eq $DuplicatesDir) { return }
+    # Skip root and Duplicates folder
+    if ($_.FullName -eq $MusicRoot -or $_.FullName -eq $DuplicatesDir) {
+        return
+    }
 
-    $ContainsMusic = Get-ChildItem $_.FullName -Recurse -File |
+    # Check if directory contains music files
+    $ContainsMusic = Get-ChildItem -Path $_.FullName -Recurse -File |
         Where-Object { $MusicExtensions -contains $_.Extension.ToLower() } |
         Select-Object -First 1
 
     if ($ContainsMusic) {
+
         $Destination = Join-Path $MusicRoot $_.Name
 
-        if (Test-Path $Destination) {
-            Move-Item $_.FullName $DuplicatesDir -Force
+        # Move duplicate folder if name already exists
+        if (Test-Path -Path $Destination) {
+            Move-Item -Path $_.FullName -Destination $DuplicatesDir -Force
         } else {
-            Move-Item $_.FullName $MusicRoot
+            Move-Item -Path $_.FullName -Destination $MusicRoot
         }
+
     } else {
-        Remove-Item $_.FullName -Recurse -Force
+        # Remove folders without music content
+        Remove-Item -Path $_.FullName -Recurse -Force
     }
 }

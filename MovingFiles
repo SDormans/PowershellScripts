@@ -1,38 +1,86 @@
-# -------- CONFIGURATION --------
+<#
+.SYNOPSIS
+    Organizes downloaded files into Personal, Music, and Photos folders.
+
+.DESCRIPTION
+    - Scans a source directory for files
+    - Moves documents, music, and images to dedicated folders
+    - Creates destination directories if they do not exist
+#>
+
+#################################################
+# SECTION 1: Configuration
+#################################################
 
 $SourceDir   = "C:\Temp\Downloads"
 $PersonalDir = "C:\Users\YourName\Personal"
 $MusicDir    = "C:\Users\YourName\Music"
 $FotosDir    = "C:\Users\YourName\Fotos"
 
-# File extensions
-$DocumentExtensions = ".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".txt"
-$MusicExtensions    = ".mp3", ".wav", ".flac", ".aac"
-$ImageExtensions    = ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff"
+# Supported file extensions (lowercase)
+$DocumentExtensions = @(
+    ".pdf", ".doc", ".docx",
+    ".ppt", ".pptx",
+    ".xls", ".xlsx",
+    ".txt"
+)
 
-# -------- CREATE DIRECTORIES IF NOT EXIST --------
+$MusicExtensions = @(
+    ".mp3", ".wav",
+    ".flac", ".aac"
+)
 
-$dirs = @($PersonalDir, $MusicDir, $FotosDir)
-foreach ($dir in $dirs) {
-    if (-not (Test-Path $dir)) {
+$ImageExtensions = @(
+    ".jpg", ".jpeg", ".png",
+    ".gif", ".bmp", ".tiff"
+)
+
+#################################################
+# SECTION 2: Ensure Destination Directories Exist
+#################################################
+
+$DestinationDirs = @(
+    $PersonalDir,
+    $MusicDir,
+    $FotosDir
+)
+
+foreach ($dir in $DestinationDirs) {
+    if (-not (Test-Path -Path $dir)) {
         New-Item -ItemType Directory -Path $dir | Out-Null
     }
 }
 
-# -------- MOVE FILES --------
+#################################################
+# SECTION 3: File Organization Logic
+#################################################
 
 Get-ChildItem -Path $SourceDir -File | ForEach-Object {
+
+    # Normalize file extension for comparison
     $extension = $_.Extension.ToLower()
 
-    if ($DocumentExtensions -contains $extension) {
-        Move-Item $_.FullName -Destination $PersonalDir -Force
-    }
-    elseif ($MusicExtensions -contains $extension) {
-        Move-Item $_.FullName -Destination $MusicDir -Force
-    }
-    elseif ($ImageExtensions -contains $extension) {
-        Move-Item $_.FullName -Destination $FotosDir -Force
+    switch ($true) {
+
+        { $DocumentExtensions -contains $extension } {
+            Move-Item -Path $_.FullName -Destination $PersonalDir -Force
+            break
+        }
+
+        { $MusicExtensions -contains $extension } {
+            Move-Item -Path $_.FullName -Destination $MusicDir -Force
+            break
+        }
+
+        { $ImageExtensions -contains $extension } {
+            Move-Item -Path $_.FullName -Destination $FotosDir -Force
+            break
+        }
     }
 }
+
+#################################################
+# SECTION 4: Completion Message
+#################################################
 
 Write-Host "File organization completed successfully."
