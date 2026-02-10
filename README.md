@@ -97,6 +97,7 @@ Useful for storage audits and cleanup planning.
 * Add logging to a file
 * Enable dry-run (`-WhatIf`) mode
 * Convert scripts into reusable PowerShell modules
+* Write tests for them
 * Schedule scripts using Windows Task Scheduler
 
 ---
@@ -119,8 +120,5 @@ These scripts were written to:
 
 If you value **clarity over cleverness**, you’re in the right place 🙂
 
-TO DO:
-- make scripts failproof (-ish)
-- log them
-- write tests
+
   
