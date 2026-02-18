@@ -15,11 +15,177 @@
         - Cleans music folders
         - Removes _MACOSX artifacts
         - Deduplicates album folders
+
+.PARAMETER WhatIf
+    Shows what would happen if the script runs without actually making changes
+
+.PARAMETER LogPath
+    Optional path to write a log file (default: script directory)
 #>
+
+[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
+param(
+    [Parameter(Mandatory = $false)]
+    [string]$LogPath = "$PSScriptRoot\FileOrganizer_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+)
+
+#################################################
+# LOGGING FUNCTION
+#################################################
+function Write-Log {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        
+        [Parameter(Mandatory = $false)]
+        [ValidateSet('Info', 'Warning', 'Error', 'Success')]
+        [string]$Level = 'Info'
+    )
+
+    $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $logMessage = "[$timestamp] [$Level] $Message"
+    
+    # Write to console with colors
+    switch ($Level) {
+        'Warning' { Write-Host $logMessage -ForegroundColor Yellow }
+        'Error' { Write-Host $logMessage -ForegroundColor Red }
+        'Success' { Write-Host $logMessage -ForegroundColor Green }
+        default { Write-Host $logMessage -ForegroundColor Gray }
+    }
+    
+    # Write to log file
+    try {
+        Add-Content -Path $LogPath -Value $logMessage -ErrorAction Stop
+    }
+    catch {
+        Write-Host "[WARNING] Could not write to log file: $_" -ForegroundColor Yellow
+    }
+}
+
+#################################################
+# FOLDER CREATION FUNCTION (with error handling)
+#################################################
+function Ensure-Folder {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+    
+    if (-not (Test-Path -Path $Path)) {
+        if ($PSCmdlet.ShouldProcess($Path, "Create folder")) {
+            try {
+                New-Item -ItemType Directory -Path $Path -ErrorAction Stop | Out-Null
+                Write-Log -Message "Created folder: $Path" -Level 'Success'
+            }
+            catch {
+                Write-Log -Message "Failed to create folder $Path : $_" -Level 'Error'
+                throw
+            }
+        }
+        else {
+            Write-Log -Message "[WHAT IF] Would create folder: $Path" -Level 'Info'
+        }
+    }
+}
+
+#################################################
+# SAFE MOVE FUNCTION (with error handling)
+#################################################
+function Move-FileSafely {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.IO.FileInfo]$File,
+        
+        [Parameter(Mandatory = $true)]
+        [string]$DestinationFolder,
+        
+        [Parameter(Mandatory = $false)]
+        [switch]$AllowOverwrite
+    )
+    
+    $destinationPath = Join-Path $DestinationFolder $File.Name
+    
+    # Check if destination already exists
+    if (Test-Path -Path $destinationPath) {
+        if ($AllowOverwrite) {
+            Write-Log -Message "Destination exists, will overwrite: $($File.Name)" -Level 'Warning'
+        }
+        else {
+            Write-Log -Message "Skipping $($File.Name) - already exists in destination" -Level 'Warning'
+            return
+        }
+    }
+    
+    if ($PSCmdlet.ShouldProcess($File.Name, "Move to $DestinationFolder")) {
+        try {
+            $moveParams = @{
+                Path = $File.FullName
+                Destination = $DestinationFolder
+                ErrorAction = 'Stop'
+            }
+            if ($AllowOverwrite) {
+                $moveParams['Force'] = $true
+            }
+            
+            Move-Item @moveParams
+            Write-Log -Message "Moved: $($File.Name) -> $DestinationFolder" -Level 'Success'
+        }
+        catch {
+            Write-Log -Message "FAILED to move $($File.Name) : $_" -Level 'Error'
+        }
+    }
+    else {
+        Write-Log -Message "[WHAT IF] Would move: $($File.Name) -> $DestinationFolder" -Level 'Info'
+    }
+}
+
+#################################################
+# SAFE REMOVE FUNCTION (with error handling)
+#################################################
+function Remove-ItemSafely {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        
+        [Parameter(Mandatory = $false)]
+        [switch]$Recurse
+    )
+    
+    if ($PSCmdlet.ShouldProcess($Path, "Remove item")) {
+        try {
+            $removeParams = @{
+                Path = $Path
+                ErrorAction = 'Stop'
+                Force = $true
+            }
+            if ($Recurse) {
+                $removeParams['Recurse'] = $true
+            }
+            
+            Remove-Item @removeParams
+            Write-Log -Message "Removed: $Path" -Level 'Success'
+        }
+        catch {
+            Write-Log -Message "FAILED to remove $Path : $_" -Level 'Error'
+        }
+    }
+    else {
+        Write-Log -Message "[WHAT IF] Would remove: $Path" -Level 'Info'
+    }
+}
+
+#################################################
+# MAIN SCRIPT EXECUTION
+#################################################
+
+Write-Log -Message "========== FILE ORGANIZER STARTED ==========" -Level 'Info'
+Write-Log -Message "Log file: $LogPath" -Level 'Info'
 
 #################################################
 # SECTION 1: Move Documents to Personal Folder
 #################################################
+
+Write-Log -Message "SECTION 1: Moving documents..." -Level 'Info'
 
 $SourceFolder   = "F:\"
 $PersonalFolder = "F:\Persoonlijk"
@@ -33,26 +199,34 @@ $DocumentExtensions = @(
 )
 
 # Ensure Personal folder exists
-if (-not (Test-Path -Path $PersonalFolder)) {
-    New-Item -ItemType Directory -Path $PersonalFolder | Out-Null
+try {
+    Ensure-Folder -Path $PersonalFolder
+}
+catch {
+    Write-Log -Message "Cannot proceed without Personal folder. Script aborted." -Level 'Error'
+    exit 1
 }
 
 # Find and move document files
-Get-ChildItem -Path $SourceFolder -Recurse -File |
-Where-Object { $DocumentExtensions -contains $_.Extension.ToLower() } |
-ForEach-Object {
-
-    $Destination = Join-Path $PersonalFolder $_.Name
-
-    # Prevent overwriting existing files
-    if (-not (Test-Path -Path $Destination)) {
-        Move-Item -Path $_.FullName -Destination $PersonalFolder
+try {
+    $documentFiles = Get-ChildItem -Path $SourceFolder -Recurse -File -ErrorAction Stop |
+                     Where-Object { $DocumentExtensions -contains $_.Extension.ToLower() }
+    
+    Write-Log -Message "Found $($documentFiles.Count) document(s) to process" -Level 'Info'
+    
+    foreach ($file in $documentFiles) {
+        Move-FileSafely -File $file -DestinationFolder $PersonalFolder
     }
+}
+catch {
+    Write-Log -Message "Error scanning for documents: $_" -Level 'Error'
 }
 
 #################################################
 # SECTION 2: Organize Photos
 #################################################
+
+Write-Log -Message "SECTION 2: Organizing photos..." -Level 'Info'
 
 $PhotoRoot    = "F:\Fotos"
 $OthersFolder = Join-Path $PhotoRoot "Others"
@@ -63,44 +237,79 @@ $PhotoExtensions = @(
     ".heic", ".mp4"
 )
 
-# Ensure Others folder exists
-if (-not (Test-Path -Path $OthersFolder)) {
-    New-Item -ItemType Directory -Path $OthersFolder | Out-Null
+# Ensure PhotoRoot and Others folder exist
+try {
+    Ensure-Folder -Path $PhotoRoot
+    Ensure-Folder -Path $OthersFolder
+}
+catch {
+    Write-Log -Message "Cannot proceed without photo folders. Skipping Section 2." -Level 'Error'
+    # Continue with next section instead of aborting
 }
 
 # Move all photos/videos into the Photos root
-Get-ChildItem -Path $PhotoRoot -Recurse -File |
-Where-Object { $PhotoExtensions -contains $_.Extension.ToLower() } |
-ForEach-Object {
-
-    $Destination = Join-Path $PhotoRoot $_.Name
-
-    if (-not (Test-Path -Path $Destination)) {
-        Move-Item -Path $_.FullName -Destination $PhotoRoot
+if (Test-Path -Path $PhotoRoot) {
+    try {
+        $photoFiles = Get-ChildItem -Path $PhotoRoot -Recurse -File -ErrorAction Stop |
+                      Where-Object { $PhotoExtensions -contains $_.Extension.ToLower() }
+        
+        Write-Log -Message "Found $($photoFiles.Count) photo(s) to consolidate" -Level 'Info'
+        
+        foreach ($file in $photoFiles) {
+            # Skip if file is already in root
+            if ($file.Directory.FullName -eq $PhotoRoot) {
+                continue
+            }
+            Move-FileSafely -File $file -DestinationFolder $PhotoRoot
+        }
+    }
+    catch {
+        Write-Log -Message "Error scanning for photos: $_" -Level 'Error'
     }
 }
 
 # Move non-photo files into Others
-Get-ChildItem -Path $PhotoRoot -Recurse -File |
-Where-Object { $PhotoExtensions -notcontains $_.Extension.ToLower() } |
-ForEach-Object {
-
-    $Destination = Join-Path $OthersFolder $_.Name
-
-    if (-not (Test-Path -Path $Destination)) {
-        Move-Item -Path $_.FullName -Destination $OthersFolder
+if (Test-Path -Path $PhotoRoot) {
+    try {
+        $nonPhotoFiles = Get-ChildItem -Path $PhotoRoot -Recurse -File -ErrorAction Stop |
+                         Where-Object { $PhotoExtensions -notcontains $_.Extension.ToLower() } |
+                         Where-Object { $_.Directory.FullName -ne $OthersFolder }  # Skip files already in Others
+        
+        Write-Log -Message "Found $($nonPhotoFiles.Count) non-photo file(s) to move to Others" -Level 'Info'
+        
+        foreach ($file in $nonPhotoFiles) {
+            Move-FileSafely -File $file -DestinationFolder $OthersFolder
+        }
+    }
+    catch {
+        Write-Log -Message "Error scanning for non-photo files: $_" -Level 'Error'
     }
 }
 
 # Remove empty directories (excluding Others)
-Get-ChildItem -Path $PhotoRoot -Recurse -Directory |
-Where-Object { $_.FullName -ne $OthersFolder } |
-Sort-Object FullName -Descending |
-Remove-Item -Force
+if (Test-Path -Path $PhotoRoot) {
+    try {
+        $emptyDirs = Get-ChildItem -Path $PhotoRoot -Recurse -Directory -ErrorAction Stop |
+                     Where-Object { $_.FullName -ne $OthersFolder } |
+                     Where-Object { (Get-ChildItem -Path $_.FullName -Force -ErrorAction SilentlyContinue).Count -eq 0 } |
+                     Sort-Object FullName -Descending
+        
+        Write-Log -Message "Found $($emptyDirs.Count) empty directorie(s) to remove" -Level 'Info'
+        
+        foreach ($dir in $emptyDirs) {
+            Remove-ItemSafely -Path $dir.FullName -Recurse
+        }
+    }
+    catch {
+        Write-Log -Message "Error removing empty directories: $_" -Level 'Error'
+    }
+}
 
 #################################################
 # SECTION 3: Organize Music Library
 #################################################
+
+Write-Log -Message "SECTION 3: Organizing music library..." -Level 'Info'
 
 $MusicRoot     = "F:\Muziek"
 $DuplicatesDir = Join-Path $MusicRoot "Duplicates"
@@ -111,44 +320,112 @@ $MusicExtensions = @(
     ".aac", ".m4a"
 )
 
-# Ensure Duplicates folder exists
-if (-not (Test-Path -Path $DuplicatesDir)) {
-    New-Item -ItemType Directory -Path $DuplicatesDir | Out-Null
+# Ensure MusicRoot and Duplicates folder exist
+try {
+    Ensure-Folder -Path $MusicRoot
+    Ensure-Folder -Path $DuplicatesDir
+}
+catch {
+    Write-Log -Message "Cannot proceed without music folders. Script aborted." -Level 'Error'
+    exit 1
 }
 
 # Remove macOS metadata folders
-Get-ChildItem -Path $MusicRoot -Recurse -Directory -Force |
-Where-Object { $_.Name -eq "_MACOSX" } |
-Remove-Item -Recurse -Force
-
-# Process directories from deepest level upward
-Get-ChildItem -Path $MusicRoot -Recurse -Directory |
-Sort-Object FullName -Descending |
-ForEach-Object {
-
-    # Skip root and Duplicates folder
-    if ($_.FullName -eq $MusicRoot -or $_.FullName -eq $DuplicatesDir) {
-        return
-    }
-
-    # Check if directory contains music files
-    $ContainsMusic = Get-ChildItem -Path $_.FullName -Recurse -File |
-        Where-Object { $MusicExtensions -contains $_.Extension.ToLower() } |
-        Select-Object -First 1
-
-    if ($ContainsMusic) {
-
-        $Destination = Join-Path $MusicRoot $_.Name
-
-        # Move duplicate folder if name already exists
-        if (Test-Path -Path $Destination) {
-            Move-Item -Path $_.FullName -Destination $DuplicatesDir -Force
-        } else {
-            Move-Item -Path $_.FullName -Destination $MusicRoot
-        }
-
-    } else {
-        # Remove folders without music content
-        Remove-Item -Path $_.FullName -Recurse -Force
+try {
+    $macosFolders = Get-ChildItem -Path $MusicRoot -Recurse -Directory -Force -ErrorAction Stop |
+                    Where-Object { $_.Name -eq "_MACOSX" }
+    
+    Write-Log -Message "Found $($macosFolders.Count) macOS metadata folder(s)" -Level 'Info'
+    
+    foreach ($folder in $macosFolders) {
+        Remove-ItemSafely -Path $folder.FullName -Recurse
     }
 }
+catch {
+    Write-Log -Message "Error removing macOS folders: $_" -Level 'Error'
+}
+
+# Process directories from deepest level upward
+try {
+    $musicDirs = Get-ChildItem -Path $MusicRoot -Recurse -Directory -ErrorAction Stop |
+                 Sort-Object FullName -Descending
+    
+    Write-Log -Message "Processing $($musicDirs.Count) music directorie(s)..." -Level 'Info'
+    
+    foreach ($dir in $musicDirs) {
+        
+        # Skip root and Duplicates folder
+        if ($dir.FullName -eq $MusicRoot -or $dir.FullName -eq $DuplicatesDir) {
+            continue
+        }
+        
+        # Check if directory contains music files
+        try {
+            $containsMusic = Get-ChildItem -Path $dir.FullName -Recurse -File -ErrorAction Stop |
+                             Where-Object { $MusicExtensions -contains $_.Extension.ToLower() } |
+                             Select-Object -First 1
+        }
+        catch {
+            Write-Log -Message "Error scanning $($dir.FullName): $_" -Level 'Warning'
+            continue
+        }
+        
+        if ($containsMusic) {
+            # Directory has music - check if it's a duplicate
+            $destinationPath = Join-Path $MusicRoot $dir.Name
+            
+            if (Test-Path -Path $destinationPath) {
+                # Duplicate found - move to Duplicates folder
+                Write-Log -Message "Duplicate album found: $($dir.Name)" -Level 'Warning'
+                
+                if ($PSCmdlet.ShouldProcess($dir.FullName, "Move to Duplicates folder")) {
+                    try {
+                        $duplicateDest = Join-Path $DuplicatesDir $dir.Name
+                        
+                        # If name also exists in Duplicates, add timestamp
+                        if (Test-Path -Path $duplicateDest) {
+                            $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+                            $duplicateDest = Join-Path $DuplicatesDir "$($dir.Name)_$timestamp"
+                        }
+                        
+                        Move-Item -Path $dir.FullName -Destination $duplicateDest -ErrorAction Stop
+                        Write-Log -Message "Moved duplicate: $($dir.Name) -> Duplicates" -Level 'Success'
+                    }
+                    catch {
+                        Write-Log -Message "Failed to move duplicate $($dir.Name): $_" -Level 'Error'
+                    }
+                }
+                else {
+                    Write-Log -Message "[WHAT IF] Would move duplicate: $($dir.Name) -> Duplicates" -Level 'Info'
+                }
+            }
+            else {
+                # Not a duplicate - move to Music root
+                if ($dir.Parent.FullName -ne $MusicRoot) {
+                    if ($PSCmdlet.ShouldProcess($dir.FullName, "Move to Music root")) {
+                        try {
+                            Move-Item -Path $dir.FullName -Destination $MusicRoot -ErrorAction Stop
+                            Write-Log -Message "Moved: $($dir.Name) -> Music root" -Level 'Success'
+                        }
+                        catch {
+                            Write-Log -Message "Failed to move $($dir.Name): $_" -Level 'Error'
+                        }
+                    }
+                    else {
+                        Write-Log -Message "[WHAT IF] Would move: $($dir.Name) -> Music root" -Level 'Info'
+                    }
+                }
+            }
+        }
+        else {
+            # No music files - remove empty folder
+            Write-Log -Message "Empty/non-music folder: $($dir.Name)" -Level 'Warning'
+            Remove-ItemSafely -Path $dir.FullName -Recurse
+        }
+    }
+}
+catch {
+    Write-Log -Message "Error processing music directories: $_" -Level 'Error'
+}
+
+Write-Log -Message "========== FILE ORGANIZER COMPLETED ==========" -Level 'Success'
