@@ -6,81 +6,356 @@
     - Scans a source directory for files
     - Moves documents, music, and images to dedicated folders
     - Creates destination directories if they do not exist
+    - Includes comprehensive logging and error handling
+
+.PARAMETER SourceDir
+    The directory to scan for files (default: C:\Temp\Downloads)
+
+.PARAMETER WhatIf
+    Shows what would happen if the script runs without actually making changes
+
+.PARAMETER LogPath
+    Optional path to write a log file (default: script directory)
 #>
 
+[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Low')]
+param(
+    [Parameter(Mandatory = $false)]
+    [string]$SourceDir = "C:\Temp\Downloads",
+    
+    [Parameter(Mandatory = $false)]
+    [string]$PersonalDir = "C:\Users\YourName\Personal",
+    
+    [Parameter(Mandatory = $false)]
+    [string]$MusicDir = "C:\Users\YourName\Music",
+    
+    [Parameter(Mandatory = $false)]
+    [string]$FotosDir = "C:\Users\YourName\Fotos",
+    
+    [Parameter(Mandatory = $false)]
+    [string]$LogPath = "$PSScriptRoot\DownloadOrganizer_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+)
+
 #################################################
-# SECTION 1: Configuration
+# LOGGING FUNCTION
+#################################################
+function Write-Log {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        
+        [Parameter(Mandatory = $false)]
+        [ValidateSet('Info', 'Warning', 'Error', 'Success', 'Debug')]
+        [string]$Level = 'Info'
+    )
+
+    $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $logMessage = "[$timestamp] [$Level] $Message"
+    
+    # Write to console with colors
+    switch ($Level) {
+        'Warning' { Write-Host $logMessage -ForegroundColor Yellow }
+        'Error' { Write-Host $logMessage -ForegroundColor Red }
+        'Success' { Write-Host $logMessage -ForegroundColor Green }
+        'Debug' { 
+            if ($VerbosePreference -ne 'SilentlyContinue') {
+                Write-Host $logMessage -ForegroundColor Gray
+            }
+        }
+        default { Write-Host $logMessage -ForegroundColor Gray }
+    }
+    
+    # Write to log file
+    try {
+        Add-Content -Path $LogPath -Value $logMessage -ErrorAction Stop
+    }
+    catch {
+        Write-Host "[WARNING] Could not write to log file: $_" -ForegroundColor Yellow
+    }
+}
+
+#################################################
+# FOLDER CREATION FUNCTION
+#################################################
+function Ensure-Folder {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$FolderDescription = "folder"
+    )
+    
+    if (-not (Test-Path -Path $Path)) {
+        if ($PSCmdlet.ShouldProcess($Path, "Create $FolderDescription")) {
+            try {
+                New-Item -ItemType Directory -Path $Path -ErrorAction Stop | Out-Null
+                Write-Log -Message "Created $FolderDescription: $Path" -Level 'Success'
+                return $true
+            }
+            catch {
+                Write-Log -Message "FAILED to create $FolderDescription $Path : $_" -Level 'Error'
+                return $false
+            }
+        }
+        else {
+            Write-Log -Message "[WHAT IF] Would create $FolderDescription: $Path" -Level 'Info'
+            return $true
+        }
+    }
+    return $true
+}
+
+#################################################
+# SAFE MOVE FUNCTION
+#################################################
+function Move-FileSafely {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.IO.FileInfo]$File,
+        
+        [Parameter(Mandatory = $true)]
+        [string]$DestinationFolder,
+        
+        [Parameter(Mandatory = $true)]
+        [string]$FileType
+    )
+    
+    $destinationPath = Join-Path $DestinationFolder $File.Name
+    
+    # Check if source file still exists (might have been moved already)
+    if (-not (Test-Path -Path $File.FullName)) {
+        Write-Log -Message "Source file no longer exists: $($File.Name)" -Level 'Warning'
+        return
+    }
+    
+    # Check if destination already exists
+    if (Test-Path -Path $destinationPath) {
+        Write-Log -Message "Cannot move $($File.Name) - already exists in $FileType folder" -Level 'Warning'
+        return
+    }
+    
+    if ($PSCmdlet.ShouldProcess($File.Name, "Move to $FileType folder")) {
+        try {
+            # Double-check source still exists (race condition check)
+            if (-not (Test-Path -Path $File.FullName)) {
+                Write-Log -Message "Source file disappeared before move: $($File.Name)" -Level 'Warning'
+                return
+            }
+            
+            Move-Item -Path $File.FullName -Destination $DestinationFolder -ErrorAction Stop
+            Write-Log -Message "[MOVED] $($File.Name) -> $FileType folder" -Level 'Success'
+        }
+        catch {
+            Write-Log -Message "[ERROR] Failed to move $($File.Name) : $_" -Level 'Error'
+            
+            # Additional error details for debugging
+            if ($_.Exception.Message -like "*Access to the path*denied*") {
+                Write-Log -Message "  → Access denied. File may be in use or permissions issue." -Level 'Debug'
+            }
+            elseif ($_.Exception.Message -like "*could not be found*") {
+                Write-Log -Message "  → File disappeared during operation." -Level 'Debug'
+            }
+        }
+    }
+    else {
+        Write-Log -Message "[WHAT IF] Would move: $($File.Name) -> $FileType folder" -Level 'Info'
+    }
+}
+
+#################################################
+# VALIDATE SOURCE DIRECTORY
+#################################################
+function Test-SourceDirectory {
+    param([string]$Path)
+    
+    if (-not (Test-Path -Path $Path)) {
+        Write-Log -Message "Source directory does not exist: $Path" -Level 'Error'
+        return $false
+    }
+    
+    # Check if directory is accessible
+    try {
+        $null = Get-ChildItem -Path $Path -ErrorAction Stop
+        return $true
+    }
+    catch {
+        Write-Log -Message "Cannot access source directory: $Path - $_" -Level 'Error'
+        return $false
+    }
+}
+
+#################################################
+# MAIN SCRIPT EXECUTION
 #################################################
 
-$SourceDir   = "C:\Temp\Downloads"
-$PersonalDir = "C:\Users\YourName\Personal"
-$MusicDir    = "C:\Users\YourName\Music"
-$FotosDir    = "C:\Users\YourName\Fotos"
+Write-Log -Message "========== DOWNLOAD ORGANIZER STARTED ==========" -Level 'Info'
+Write-Log -Message "Source directory: $SourceDir" -Level 'Info'
+Write-Log -Message "Log file: $LogPath" -Level 'Info'
+
+if ($WhatIfPreference) {
+    Write-Log -Message "WHAT IF MODE - No files will be actually moved" -Level 'Warning'
+}
+
+#################################################
+# SECTION 1: Supported Extensions
+#################################################
 
 # Supported file extensions (lowercase)
 $DocumentExtensions = @(
     ".pdf", ".doc", ".docx",
     ".ppt", ".pptx",
     ".xls", ".xlsx",
-    ".txt"
+    ".txt", ".rtf", ".odt"
 )
 
 $MusicExtensions = @(
-    ".mp3", ".wav",
-    ".flac", ".aac"
+    ".mp3", ".wav", ".flac", 
+    ".aac", ".m4a", ".ogg"
 )
 
 $ImageExtensions = @(
     ".jpg", ".jpeg", ".png",
-    ".gif", ".bmp", ".tiff"
+    ".gif", ".bmp", ".tiff",
+    ".webp", ".heic", ".svg"
 )
 
+# Create a mapping for easier processing
+$extensionMap = @{}
+foreach ($ext in $DocumentExtensions) { $extensionMap[$ext] = 'Document' }
+foreach ($ext in $MusicExtensions) { $extensionMap[$ext] = 'Music' }
+foreach ($ext in $ImageExtensions) { $extensionMap[$ext] = 'Photo' }
+
+Write-Log -Message "Loaded $($extensionMap.Count) supported file extensions" -Level 'Debug'
+
 #################################################
-# SECTION 2: Ensure Destination Directories Exist
+# SECTION 2: Validate Source Directory
 #################################################
 
-$DestinationDirs = @(
-    $PersonalDir,
-    $MusicDir,
-    $FotosDir
-)
-
-foreach ($dir in $DestinationDirs) {
-    if (-not (Test-Path -Path $dir)) {
-        New-Item -ItemType Directory -Path $dir | Out-Null
-    }
+if (-not (Test-SourceDirectory -Path $SourceDir)) {
+    Write-Log -Message "Script aborted due to source directory issues." -Level 'Error'
+    exit 1
 }
 
 #################################################
-# SECTION 3: File Organization Logic
+# SECTION 3: Ensure Destination Directories Exist
 #################################################
 
-Get-ChildItem -Path $SourceDir -File | ForEach-Object {
+$destinations = @(
+    @{ Path = $PersonalDir; Type = 'Personal documents' },
+    @{ Path = $MusicDir; Type = 'Music' },
+    @{ Path = $FotosDir; Type = 'Photos' }
+)
 
-    # Normalize file extension for comparison
-    $extension = $_.Extension.ToLower()
-
-    switch ($true) {
-
-        { $DocumentExtensions -contains $extension } {
-            Move-Item -Path $_.FullName -Destination $PersonalDir -Force
-            break
-        }
-
-        { $MusicExtensions -contains $extension } {
-            Move-Item -Path $_.FullName -Destination $MusicDir -Force
-            break
-        }
-
-        { $ImageExtensions -contains $extension } {
-            Move-Item -Path $_.FullName -Destination $FotosDir -Force
-            break
-        }
+$allDestinationsValid = $true
+foreach ($dest in $destinations) {
+    if (-not (Ensure-Folder -Path $dest.Path -FolderDescription $dest.Type)) {
+        $allDestinationsValid = $false
     }
 }
 
+if (-not $allDestinationsValid) {
+    Write-Log -Message "Some destination folders could not be created. Please check permissions." -Level 'Error'
+    Write-Log -Message "Script aborted to prevent file loss." -Level 'Error'
+    exit 1
+}
+
 #################################################
-# SECTION 4: Completion Message
+# SECTION 4: File Organization Logic
 #################################################
 
-Write-Host "File organization completed successfully."
+Write-Log -Message "Scanning for files in: $SourceDir" -Level 'Info'
+
+try {
+    $files = Get-ChildItem -Path $SourceDir -File -ErrorAction Stop
+    
+    if ($files.Count -eq 0) {
+        Write-Log -Message "No files found in source directory." -Level 'Warning'
+    }
+    else {
+        Write-Log -Message "Found $($files.Count) file(s) to process" -Level 'Info'
+        
+        $stats = @{
+            Document = 0
+            Music = 0
+            Photo = 0
+            Unknown = 0
+        }
+        
+        foreach ($file in $files) {
+            $extension = $file.Extension.ToLower()
+            
+            # Skip files with no extension
+            if ([string]::IsNullOrEmpty($extension)) {
+                Write-Log -Message "Skipping file with no extension: $($file.Name)" -Level 'Debug'
+                $stats.Unknown++
+                continue
+            }
+            
+            $fileType = $extensionMap[$extension]
+            
+            switch ($fileType) {
+                'Document' {
+                    Move-FileSafely -File $file -DestinationFolder $PersonalDir -FileType "Personal"
+                    $stats.Document++
+                }
+                'Music' {
+                    Move-FileSafely -File $file -DestinationFolder $MusicDir -FileType "Music"
+                    $stats.Music++
+                }
+                'Photo' {
+                    Move-FileSafely -File $file -DestinationFolder $FotosDir -FileType "Photos"
+                    $stats.Photo++
+                }
+                default {
+                    Write-Log -Message "Skipping unsupported file type: $($file.Name) ($extension)" -Level 'Debug'
+                    $stats.Unknown++
+                }
+            }
+        }
+        
+        # Log summary statistics
+        Write-Log -Message "---------- SUMMARY ----------" -Level 'Info'
+        Write-Log -Message "Documents processed: $($stats.Document)" -Level 'Info'
+        Write-Log -Message "Music files processed: $($stats.Music)" -Level 'Info'
+        Write-Log -Message "Photos processed: $($stats.Photo)" -Level 'Info'
+        Write-Log -Message "Unsupported files: $($stats.Unknown)" -Level 'Info'
+        Write-Log -Message "-----------------------------" -Level 'Info'
+    }
+}
+catch {
+    Write-Log -Message "Critical error during file processing: $_" -Level 'Error'
+    Write-Log -Message "Stack trace: $($_.ScriptStackTrace)" -Level 'Debug'
+    exit 1
+}
+
+#################################################
+# SECTION 5: Check for Remaining Files
+#################################################
+
+try {
+    $remainingFiles = Get-ChildItem -Path $SourceDir -File -ErrorAction Stop
+    if ($remainingFiles.Count -gt 0 -and -not $WhatIfPreference) {
+        Write-Log -Message "$($remainingFiles.Count) file(s) remain in source directory:" -Level 'Warning'
+        foreach ($file in $remainingFiles | Select-Object -First 5) {
+            Write-Log -Message "  → $($file.Name)" -Level 'Warning'
+        }
+        if ($remainingFiles.Count -gt 5) {
+            Write-Log -Message "  → ... and $($remainingFiles.Count - 5) more" -Level 'Warning'
+        }
+    }
+}
+catch {
+    Write-Log -Message "Could not check for remaining files: $_" -Level 'Warning'
+}
+
+#################################################
+# SECTION 6: Completion Message
+#################################################
+
+Write-Log -Message "========== DOWNLOAD ORGANIZER COMPLETED ==========" -Level 'Success'
+Write-Log -Message "Log file saved to: $LogPath" -Level 'Info'
+
+if ($WhatIfPreference) {
+    Write-Log -Message "WHAT IF MODE was active - No actual changes were made" -Level 'Warning'
+}
