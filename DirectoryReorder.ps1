@@ -110,6 +110,10 @@ $SourceDir = Resolve-Setting -Name 'SourceDir' -Alias 'SourceRoot' -BoundParamet
 $PersonalDir = Resolve-Setting -Name 'PersonalDir' -Alias 'PersonalFolder' -BoundParameters $PSBoundParameters -Config $config -Required
 $PhotosDir = Resolve-Setting -Name 'PhotosDir' -Alias 'PhotoRoot' -BoundParameters $PSBoundParameters -Config $config -Required
 $MusicDir = Resolve-Setting -Name 'MusicDir' -Alias 'MusicRoot' -BoundParameters $PSBoundParameters -Config $config -Required
+$SourceDir = ConvertTo-FullPath -Path $SourceDir
+$PersonalDir = ConvertTo-FullPath -Path $PersonalDir
+$PhotosDir = ConvertTo-FullPath -Path $PhotosDir
+$MusicDir = ConvertTo-FullPath -Path $MusicDir
 $TimeoutSeconds = Resolve-Setting -Name 'TimeoutSeconds' -BoundParameters $PSBoundParameters -Config $config -Default $TimeoutSeconds
 
 $OthersDir = Join-Path $PhotosDir 'Others'
@@ -123,7 +127,7 @@ Set-LogFile -Path $LogPath
 
 function Get-NormalizedPath {
     param([string]$Path)
-    return [System.IO.Path]::GetFullPath($Path).TrimEnd('\', '/')
+    return (ConvertTo-FullPath -Path $Path).TrimEnd('\', '/')
 }
 
 function Test-PathUnder {

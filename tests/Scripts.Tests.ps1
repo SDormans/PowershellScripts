@@ -93,6 +93,20 @@ Describe 'MovingFiles.ps1' {
         $report.Sections.Photo.Moved | Should -Be 2
     }
 
+    It 'resolves relative paths against the current location' {
+        Push-Location -LiteralPath $root
+        try {
+            & (Join-Path -Path $repoRoot -ChildPath 'MovingFiles.ps1') -SourceDir 'Downloads' -PersonalDir 'Personal' -MusicDir 'Music' `
+                -PhotosDir 'Photos' -PreserveFolderStructure -LogPath $params.LogPath -ReportPath $params.ReportPath `
+                -InformationAction SilentlyContinue -WarningAction SilentlyContinue
+        }
+        finally {
+            Pop-Location
+        }
+        Test-Path ([System.IO.Path]::Combine($params.PhotosDir, 'nested', 'deep.jpg')) | Should -BeTrue
+        Test-Path (Join-Path -Path $params.PersonalDir -ChildPath 'report.pdf') | Should -BeTrue
+    }
+
     It 'reads paths from a config file and keeps the old -FotosDir alias' {
         $configPath = Join-Path -Path $root -ChildPath 'config.json'
         @{ MovingFiles = @{ SourceDir = $params.SourceDir; PersonalDir = $params.PersonalDir; MusicDir = $params.MusicDir; PhotosDir = 'unused' } } |

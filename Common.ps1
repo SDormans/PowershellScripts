@@ -239,6 +239,23 @@ function Test-PathSafe {
     }
 }
 
+function ConvertTo-FullPath {
+    <#
+    .SYNOPSIS
+        Resolves a (possibly relative or not yet existing) path against the current PowerShell
+        location. [System.IO.Path]::GetFullPath uses the process directory, which Set-Location
+        does not change.
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory = $true, Position = 0)]
+        [string]$Path
+    )
+
+    return $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
+}
+
 function New-FolderIfMissing {
     <#
     .SYNOPSIS
@@ -296,8 +313,8 @@ function Test-SameVolume {
         [string]$OtherPath
     )
 
-    $root = [System.IO.Path]::GetPathRoot([System.IO.Path]::GetFullPath($Path))
-    $otherRoot = [System.IO.Path]::GetPathRoot([System.IO.Path]::GetFullPath($OtherPath))
+    $root = [System.IO.Path]::GetPathRoot((ConvertTo-FullPath -Path $Path))
+    $otherRoot = [System.IO.Path]::GetPathRoot((ConvertTo-FullPath -Path $OtherPath))
     return [string]::Equals($root, $otherRoot, [System.StringComparison]::OrdinalIgnoreCase)
 }
 

@@ -39,6 +39,18 @@ Describe 'Test-PathSafe' {
     }
 }
 
+Describe 'ConvertTo-FullPath' {
+    It 'resolves relative paths against the PowerShell location, not the process directory' {
+        Push-Location -LiteralPath $TestDrive
+        try {
+            ConvertTo-FullPath -Path 'not-yet-created' | Should -Be (Join-Path -Path $TestDrive -ChildPath 'not-yet-created')
+        }
+        finally {
+            Pop-Location
+        }
+    }
+}
+
 Describe 'New-FolderIfMissing' {
     It 'creates missing nested folders' {
         $path = [System.IO.Path]::Combine($TestDrive, 'x', 'y', 'z')

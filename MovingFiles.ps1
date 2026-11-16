@@ -101,6 +101,10 @@ $SourceDir = Resolve-Setting -Name 'SourceDir' -BoundParameters $PSBoundParamete
 $PersonalDir = Resolve-Setting -Name 'PersonalDir' -BoundParameters $PSBoundParameters -Config $config -Required
 $MusicDir = Resolve-Setting -Name 'MusicDir' -BoundParameters $PSBoundParameters -Config $config -Required
 $PhotosDir = Resolve-Setting -Name 'PhotosDir' -Alias 'FotosDir' -BoundParameters $PSBoundParameters -Config $config -Required
+$SourceDir = ConvertTo-FullPath -Path $SourceDir
+$PersonalDir = ConvertTo-FullPath -Path $PersonalDir
+$MusicDir = ConvertTo-FullPath -Path $MusicDir
+$PhotosDir = ConvertTo-FullPath -Path $PhotosDir
 $TimeoutSeconds = Resolve-Setting -Name 'TimeoutSeconds' -BoundParameters $PSBoundParameters -Config $config -Default $TimeoutSeconds
 $PreserveFolderStructure = [bool](Resolve-Setting -Name 'PreserveFolderStructure' -BoundParameters $PSBoundParameters -Config $config -Default $false)
 
@@ -146,7 +150,7 @@ function Get-DestinationPath {
     )
 
     if ($PreserveFolderStructure) {
-        $sourceRoot = [System.IO.Path]::GetFullPath($SourceDir).TrimEnd('\', '/')
+        $sourceRoot = $SourceDir.TrimEnd('\', '/')
         $fileDir = $File.Directory.FullName
         if ($fileDir.Length -gt $sourceRoot.Length) {
             $relativePath = $fileDir.Substring($sourceRoot.Length).TrimStart('\', '/')
