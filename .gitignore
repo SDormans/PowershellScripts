@@ -1,0 +1,12 @@
+# Script output
+*.log
+*_Report_*.json
+DirectoryDistribution_Report_*.csv
+DirectoryDistribution_Report_*.html
+
+# Local configuration (copy config.example.json to config.json)
+config.json
+
+# Test output
+testResults.xml
+coverage.xml
