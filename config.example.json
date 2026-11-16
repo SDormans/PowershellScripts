@@ -1,0 +1,17 @@
+{
+    "MovingFiles": {
+        "SourceDir": "C:\\Users\\<you>\\Downloads",
+        "PersonalDir": "D:\\Personal",
+        "PhotosDir": "D:\\Photos",
+        "MusicDir": "D:\\Music",
+        "PreserveFolderStructure": false,
+        "TimeoutSeconds": 300
+    },
+    "DirectoryReorder": {
+        "SourceDir": "D:\\",
+        "PersonalDir": "D:\\Personal",
+        "PhotosDir": "D:\\Photos",
+        "MusicDir": "D:\\Music",
+        "TimeoutSeconds": 300
+    }
+}

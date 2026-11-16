@@ -1,369 +1,272 @@
-# 🚀 PowerShell File Organization Scripts
+# PowerShell File Organization Scripts
 
-[![PowerShell](https://img.shields.io/badge/PowerShell-5.1%2B-blue.svg)](https://github.com/PowerShell/PowerShell)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/SDormans/PowershellScripts/pulls)
+[![PowerShell](https://img.shields.io/badge/PowerShell-5.1%20%7C%207%2B-blue.svg)](https://github.com/PowerShell/PowerShell)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![PowerShell CI](https://github.com/SDormans/PowershellScripts/actions/workflows/powershell.yml/badge.svg)](https://github.com/SDormans/PowershellScripts/actions/workflows/powershell.yml)
 
-A collection of PowerShell scripts for enterprise-grade file organization, cleaning, and reporting. These scripts transform chaotic file structures into organized, maintainable hierarchies with comprehensive logging, error handling, and audit capabilities.
+PowerShell scripts for organizing files, cleaning up photo/music libraries and reporting on disk usage, with logging, JSON reports and `-WhatIf` support.
 
----
-
-## 📋 Table of Contents
-- [✨ Key Features](#-key-features)
-- [📦 Scripts Overview](#-scripts-overview)
-- [⚙️ Installation](#️-installation)
-- [🚀 Quick Start](#-quick-start)
-- [📖 Detailed Usage](#-detailed-usage)
-- [🛡️ Safety & Best Practices](#️-safety--best-practices)
-- [📊 Reporting & Logging](#-reporting--logging)
-- [🔧 Configuration](#-configuration)
-- [📅 Automation](#-automation)
-- [🤝 Contributing](#-contributing)
-- [📄 License](#-license)
+## Table of Contents
+- [Scripts](#scripts)
+- [Requirements](#requirements)
+- [Quick Start](#quick-start)
+- [Parameters](#parameters)
+- [Configuration](#configuration)
+- [Logging and Reports](#logging-and-reports)
+- [Safety](#safety)
+- [Automation](#automation)
+- [Development](#development)
+- [License](#license)
 
 ---
 
-## ✨ Key Features
+## Scripts
 
-### 🏢 Enterprise-Grade Reliability
-- **Comprehensive error handling** with try/catch blocks and recovery mechanisms
-- **Atomic file operations** using temporary files to prevent data loss
-- **Timeout protection** to prevent hanging on network drives
-- **Retry logic** for transient failures
+| Script | Purpose |
+|--------|---------|
+| [`MovingFiles.ps1`](MovingFiles.ps1) | Sorts a download/inbox folder into Personal (documents), Music and Photos folders. |
+| [`DirectoryReorder.ps1`](DirectoryReorder.ps1) | Multi-stage cleanup of a drive or folder: collects documents, flattens the photo library, and tidies the music library. |
+| [`DirectoryDistributionChecker.ps1`](DirectoryDistributionChecker.ps1) | Reports the size, file count and extension mix of every directory under a path. |
+| [`Common.ps1`](Common.ps1) | Shared helpers (`Write-Log`, `Format-FileSize`, `Test-PathSafe`, `New-FolderIfMissing`, `Move-FileSafely`, `Initialize-Report`, `Update-Report`, `Save-Report`, config loading). Dot-sourced by the scripts above; keep it next to them. |
 
-### 📊 Professional Reporting
-- **JSON reports** with detailed statistics per operation
-- **Colored console output** for real-time monitoring
-- **Structured logging** with multiple verbosity levels
-- **Audit trails** of all file movements and changes
+### MovingFiles.ps1
+- Moves documents (PDF, Office, OpenDocument, TXT, ...), music (MP3, FLAC, WAV, ...) and photos (JPG, PNG, HEIC, RAW, ...) to their destination folders.
+- Top-level files only by default; `-PreserveFolderStructure` recurses and keeps relative sub-folders.
+- Existing destination files are skipped unless `-Force` is passed.
+- Processes files sequentially. **Parallel processing (`-Parallel` / `-ThrottleLimit`) has been removed**: the previous implementation required PowerShell 7, skipped duplicate handling and safe moves, and never updated the report. It may return later with thread-safe reporting.
 
-### 🛡️ Safety First
-- **WhatIf/Dry-run mode** to preview changes before execution
-- **Conservative duplicate handling** with versioning
-- **No accidental overwrites** without explicit force flags
-- **Permission validation** before operations
+### DirectoryReorder.ps1
+1. **Documents** – finds document files anywhere under `-SourceDir` and moves them into `-PersonalDir`.
+2. **Photos** – flattens nested folders under `-PhotosDir`, moves non-photo files to `Others`, removes empty folders.
+3. **Music** – removes macOS artifacts (`__MACOSX`, `.DS_Store`), moves album folders to the top of `-MusicDir`, moves duplicate albums to `Duplicates`, and removes folders without music.
 
-### ⚡ Performance Optimized
-- **Parallel processing** for large file sets
-- **Configurable throttling** to manage system load
-- **Smart caching** of directory structures
-- **Minimal memory footprint**
+### DirectoryDistributionChecker.ps1
+- Scans the tree **once** and rolls file sizes/counts up into every parent directory (no per-directory background jobs).
+- Shows the top 5 extensions per directory, filters by `-MinSizeMB`, sorts by size, name or extension count.
+- Exports to CSV, JSON or HTML; `-PassThru` returns the result objects.
+- `-TimeoutSeconds` limits the whole scan; directories that were not reached are marked in the report.
 
----
-
-## 📦 Scripts Overview
-
-### 1️⃣ Download Organizer (`DownloadOrganizer.ps1`)
-Enterprise-grade download folder manager with advanced categorization.
-
-**Features:**
-- 📁 Automatic sorting into Personal, Music, and Photos folders
-- 🔧 Configurable extension mapping via JSON
-- 📊 Detailed processing reports
-- ⚡ Parallel processing support
-- 🔍 Duplicate detection and handling
-
-**Supported formats:**
-- **Documents:** PDF, DOC/DOCX, XLS/XLSX, PPT/PPTX, TXT, RTF, ODT, and more
-- **Music:** MP3, FLAC, WAV, AAC, M4A, OGG, WMA
-- **Photos:** JPG, JPEG, PNG, GIF, BMP, TIFF, HEIC, WebP, RAW formats
-
----
-
-### 2️⃣ File System Cleaner (`FileOrganizer.ps1`)
-Advanced multi-stage organizer for deep file system maintenance.
-
-**Three-stage cleaning process:**
-
-#### Stage 1: Document Organization
-- Scans entire drive for document files
-- Consolidates into centralized Personal folder
-- Preserves folder structure (optional)
-
-#### Stage 2: Photo Library Management
-- Flattens nested photo structures
-- Separates non-photo files into `Others` folder
-- Intelligent empty directory cleanup
-- Handles RAW and HEIC formats
-
-#### Stage 3: Music Library Optimization
-- Removes macOS artifacts (`_MACOSX`, `.DS_Store`)
-- Smart duplicate album detection
-- Versioned duplicate storage
-- Non-music folder cleanup
-
----
-
-### 3️⃣ Directory Analyzer (`DirectoryReport.ps1`)
-Professional storage audit and reporting tool.
-
-**Capabilities:**
-- 📏 Recursive size calculation per directory
-- 🔤 Unique extension inventory
-- 📈 Top 5 extensions per folder
-- ⏱️ Scan duration tracking
-- 📤 Multiple export formats (CSV, JSON, HTML)
-- 🎯 Filter by minimum size
-- 🔍 Timeout protection for deep scans
-
-**Sample output:**
+Sample output:
 ```
-Directory                    Size     Files  Exts  Top Extensions
----------------------------  -------  -----  ----  ------------------------
-F:\Projects                  2.45 GB  1245   12    .cs (456); .json (234)
-F:\Photos                    856 MB   342    8     .jpg (201); .png (89)
-F:\Downloads                 234 MB   67     15    .pdf (23); .zip (12)
+Directory          Size     Files Exts Top Extensions
+---------          ----     ----- ---- --------------
+D:\Projects        2.45 GB   1245   12 .cs (456); .json (234); .md (40)
+D:\Projects\Photos 856 MB     342    8 .jpg (201); .png (89)
+D:\Projects\Docs   234 MB      67   15 .pdf (23); .zip (12)
 ```
 
 ---
 
-## ⚙️ Installation
+## Requirements
+- Windows PowerShell 5.1 or PowerShell 7+ (Windows; PowerShell 7 on Linux/macOS also works).
+- Read/write permissions on the source and destination folders.
 
-### Prerequisites
-- Windows 7/8/10/11 or Windows Server 2012+
-- PowerShell 5.1 or higher
-- Appropriate file system permissions
-
-### Quick Install
 ```powershell
-# Clone the repository
 git clone https://github.com/SDormans/PowershellScripts.git
 cd PowershellScripts
 
-# (Optional) Unblock scripts
-Get-ChildItem -Path . -Recurse *.ps1 | Unblock-File
-
-# Set execution policy (if needed)
+# Optional: unblock downloaded scripts and allow local scripts to run
+Get-ChildItem -Path . -Filter *.ps1 -Recurse | Unblock-File
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
-### Basic Usage Examples
-
-```powershell
-# 1. Test the Download Organizer (dry run)
-.\DownloadOrganizer.ps1 -SourceDir "C:\Users\$env:USERNAME\Downloads" -WhatIf
-
-# 2. Run File Organizer with verbose output
-.\FileOrganizer.ps1 -SourceRoot "D:\Data" -Verbose
-
-# 3. Generate directory report and export to HTML
-.\DirectoryReport.ps1 -Path "F:\" -ExportFormat HTML -MinSizeMB 100
-```
-
-### Production Scenarios
+There are no built-in default paths: pass the folders as parameters or put them in a configuration file.
 
 ```powershell
-# Automated nightly cleanup with configuration
-.\FileOrganizer.ps1 -ConfigPath ".\config\production.json" -Parallel -LogPath "D:\Logs\cleanup.log"
+# Preview how a download folder would be sorted
+.\MovingFiles.ps1 -SourceDir "$env:USERPROFILE\Downloads" -PersonalDir "D:\Personal" `
+    -MusicDir "D:\Music" -PhotosDir "D:\Photos" -WhatIf
 
-# Storage audit with JSON export for dashboard
-.\DirectoryReport.ps1 -Path "\\nas\shared" -ExportFormat JSON -TimeoutSeconds 600
+# Reorganize a data drive, showing progress messages
+.\DirectoryReorder.ps1 -SourceDir "D:\" -PersonalDir "D:\Personal" -PhotosDir "D:\Photos" `
+    -MusicDir "D:\Music" -InformationAction Continue
 
-# Quick download organization with reporting
-.\DownloadOrganizer.ps1 -SourceDir "C:\Downloads" -ReportPath ".\reports\downloads.json"
+# Disk usage report exported to HTML, only directories of 100 MB or more
+.\DirectoryDistributionChecker.ps1 -Path "D:\" -ExportFormat HTML -MinSizeMB 100
+
+# Use a configuration file (see below)
+.\MovingFiles.ps1 -ConfigPath ".\config.json" -WhatIf
+.\DirectoryReorder.ps1 -ConfigPath ".\config.json" -DryRun
+
+# Storage audit of a share, JSON export for a dashboard
+.\DirectoryDistributionChecker.ps1 -Path "\\nas\shared" -ExportFormat JSON -TimeoutSeconds 600
 ```
 
 ---
 
-## 📖 Detailed Usage
+## Parameters
 
-### Download Organizer Parameters
-
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `-SourceDir` | Directory to scan | `C:\Temp\Downloads` |
-| `-PersonalDir` | Destination for documents | `C:\Users\YourName\Personal` |
-| `-MusicDir` | Destination for music | `C:\Users\YourName\Music` |
-| `-FotosDir` | Destination for photos | `C:\Users\YourName\Fotos` |
-| `-ConfigPath` | JSON configuration file | `$null` |
-| `-Parallel` | Enable parallel processing | `$false` |
-| `-ThrottleLimit` | Max concurrent operations | `5` |
-| `-PreserveFolderStructure` | Keep subfolder structure | `$false` |
-| `-Force` | Overwrite existing files | `$false` |
-| `-WhatIf` | Preview changes | `$false` |
-| `-LogPath` | Log file location | Auto-generated |
-| `-ReportPath` | JSON report location | Auto-generated |
-| `-TimeoutSeconds` | Operation timeout | `300` |
-
-### File Organizer Parameters
+### MovingFiles.ps1
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `-SourceRoot` | Root directory to scan | `F:\` |
-| `-ConfigPath` | JSON configuration file | `$null` |
-| `-Parallel` | Enable parallel processing | `$false` |
-| `-ThrottleLimit` | Max concurrent operations | `5` |
-| `-WhatIf` | Preview changes | `$false` |
-| `-LogPath` | Log file location | Auto-generated |
-| `-ReportPath` | JSON report location | Auto-generated |
-| `-TimeoutSeconds` | Operation timeout | `300` |
+| `-SourceDir` | Folder to sort | **Required** (parameter or config) |
+| `-PersonalDir` | Destination for documents | **Required** (parameter or config) |
+| `-MusicDir` | Destination for music | **Required** (parameter or config) |
+| `-PhotosDir` (alias `-FotosDir`) | Destination for photos | **Required** (parameter or config) |
+| `-ConfigPath` | JSON configuration file | none |
+| `-PreserveFolderStructure` | Recurse and keep sub-folder structure | `$false` |
+| `-Force` | Overwrite existing destination files | `$false` |
+| `-TimeoutSeconds` | Stop processing after this many seconds | `300` |
+| `-LogPath` | Log file | `MovingFiles_<timestamp>.log` next to the script |
+| `-ReportPath` | JSON report | `MovingFiles_Report_<timestamp>.json` next to the script |
+| `-WhatIf` / `-Confirm` | Preview / confirm changes | |
 
-### Directory Report Parameters
+### DirectoryReorder.ps1
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `-Path` | **Required** Directory to analyze | - |
+| `-SourceDir` (alias `-SourceRoot`) | Root folder scanned for documents | **Required** (parameter or config) |
+| `-PersonalDir` (alias `-PersonalFolder`) | Destination for documents | **Required** (parameter or config) |
+| `-PhotosDir` (alias `-PhotoRoot`) | Photo library to flatten | **Required** (parameter or config) |
+| `-MusicDir` (alias `-MusicRoot`) | Music library to clean | **Required** (parameter or config) |
+| `-ConfigPath` | JSON configuration file | none |
+| `-DryRun` | Same as `-WhatIf` | `$false` |
+| `-TimeoutSeconds` | Stop the document stage after this many seconds | `300` |
+| `-LogPath` | Log file | `DirectoryReorder_<timestamp>.log` next to the script |
+| `-ReportPath` | JSON report | `DirectoryReorder_Report_<timestamp>.json` next to the script |
+| `-WhatIf` / `-Confirm` | Preview / confirm changes | |
+
+### DirectoryDistributionChecker.ps1
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `-Path` | Directory to analyze | **Required** |
 | `-MinSizeMB` | Minimum directory size to show | `0` |
-| `-SortBy` | Sort method (Size/Name/ExtensionCount) | `Size` |
-| `-ExportFormat` | Export format (None/CSV/JSON/HTML) | `None` |
-| `-OutputPath` | Export destination | Current directory |
-| `-TimeoutSeconds` | Scan timeout per directory | `300` |
-| `-WhatIf` | Preview scan | `$false` |
-| `-LogPath` | Log file location | Auto-generated |
+| `-SortBy` | `Size`, `Name` or `ExtensionCount` | `Size` |
+| `-ExportFormat` | `None`, `CSV`, `JSON` or `HTML` | `None` |
+| `-OutputPath` | Export folder | Script folder |
+| `-TimeoutSeconds` | Timeout for the whole scan | `300` |
+| `-LogPath` | Log file | `DirectoryDistributionChecker_<timestamp>.log` next to the script |
+| `-PassThru` | Return the result objects | `$false` |
+
+Parameter names are consistent across scripts (`SourceDir`, `PersonalDir`, `PhotosDir`, `MusicDir`). The old names (`FotosDir`, `SourceRoot`, `PersonalFolder`, `PhotoRoot`, `MusicRoot`) still work as aliases.
 
 ---
 
-## 🛡️ Safety & Best Practices
+## Configuration
 
-### Before First Run
-1. **Always use `-WhatIf` first** to preview changes
-2. Test on a small, non-critical directory
-3. Verify destination paths have sufficient space
-4. Ensure you have proper permissions
+Copy [`config.example.json`](config.example.json) to `config.json` (ignored by git) and adjust the paths. Each script reads its own section (`MovingFiles`, `DirectoryReorder`); a file without sections is also accepted.
 
-### Production Guidelines
-```powershell
-# Recommended testing workflow
-1. .\script.ps1 -WhatIf -Verbose
-2. .\script.ps1 -WhatIf -Verbose -LogPath "test.log"
-3. .\script.ps1 -Verbose -LogPath "production.log"
-4. Review the JSON report after execution
-```
-
-### Safety Features
-- ✅ **No automatic overwrites** without `-Force`
-- ✅ **Transaction-like moves** with temp files
-- ✅ **Timeout protection** for network drives
-- ✅ **Permission validation** before operations
-- ✅ **Comprehensive logging** for audit trails
-- ✅ **Duplicate versioning** instead of deletion
-
----
-
-## 📊 Reporting & Logging
-
-### Log File Structure
-```
-[2024-02-24 14:30:15.123] [Info] ========== DOWNLOAD ORGANIZER STARTED ==========
-[2024-02-24 14:30:15.124] [Info] Source directory: C:\Downloads
-[2024-02-24 14:30:15.125] [Info] Log file: C:\Logs\DownloadOrganizer_20240224_143015.log
-[2024-02-24 14:30:15.126] [Success] Found 42 file(s) to process
-[2024-02-24 14:30:15.127] [Success] [MOVED] report.pdf -> Personal folder
-[2024-02-24 14:30:15.128] [Warning] Skipping song.mp3 - already exists in Music folder
-```
-
-### JSON Report Example
 ```json
 {
-  "StartTime": "2024-02-24T14:30:15",
-  "EndTime": "2024-02-24T14:31:42",
-  "DurationSeconds": 87.24,
+    "MovingFiles": {
+        "SourceDir": "C:\\Users\\<you>\\Downloads",
+        "PersonalDir": "D:\\Personal",
+        "PhotosDir": "D:\\Photos",
+        "MusicDir": "D:\\Music",
+        "PreserveFolderStructure": false,
+        "TimeoutSeconds": 300
+    },
+    "DirectoryReorder": {
+        "SourceDir": "D:\\",
+        "PersonalDir": "D:\\Personal",
+        "PhotosDir": "D:\\Photos",
+        "MusicDir": "D:\\Music",
+        "TimeoutSeconds": 300
+    }
+}
+```
+
+Precedence: explicit parameter > configuration file > built-in default. The scripts throw a terminating error when a required path is missing.
+
+---
+
+## Logging and Reports
+
+Messages go to the standard PowerShell streams instead of `Write-Host`, so they can be redirected or silenced:
+
+| Level | Stream | Shown by default |
+|-------|--------|------------------|
+| Info / Success | Information (6) | PowerShell 7 hosts: no – use `-InformationAction Continue`; the log file always has them |
+| Warning | Warning (3) | yes |
+| Error | Error (2) | yes |
+
+Every message is also appended to the log file:
+```
+[2026-02-24 14:30:15.123] [Info] ========== MOVING FILES STARTED ==========
+[2026-02-24 14:30:15.126] [Info] Found 42 file(s) to process
+[2026-02-24 14:30:15.127] [Success] [MOVED] C:\Downloads\report.pdf -> D:\Personal\report.pdf
+[2026-02-24 14:30:15.128] [Warning] Skipping song.mp3 - already exists in Music folder
+```
+
+`MovingFiles.ps1` and `DirectoryReorder.ps1` write a JSON report:
+```json
+{
+  "StartTime": "2026-02-24T14:30:15",
+  "Status": "Completed",
+  "Script": "MovingFiles",
   "SourceDirectory": "C:\\Downloads",
-  "FilesProcessed": 42,
-  "FilesMoved": 38,
-  "FilesSkipped": 3,
-  "FilesFailed": 1,
-  "TotalSizeBytes": 1584328704,
-  "Categories": {
-    "Document": { "Count": 15, "Size": 24567891 },
-    "Music": { "Count": 12, "Size": 985432167 },
-    "Photo": { "Count": 11, "Size": 574239546 },
-    "Unknown": { "Count": 4, "Size": 1024000 }
+  "Sections": {
+    "Document": { "Processed": 15, "Moved": 14, "Skipped": 0, "Failed": 1, "Size": 24567891 },
+    "Music":    { "Processed": 12, "Moved": 11, "Skipped": 1, "Failed": 0, "Size": 985432167 }
   },
   "Errors": [
-    {
-      "Time": "2024-02-24T14:31:40",
-      "Message": "Failed to move locked-file.pdf: Access denied"
-    }
-  ]
+    { "Time": "2026-02-24T14:31:40", "Message": "Failed to move C:\\Downloads\\locked.pdf : Access denied" }
+  ],
+  "Warnings": [],
+  "EndTime": "2026-02-24T14:31:42",
+  "DurationSeconds": 87.24,
+  "Summary": {
+    "TotalFilesProcessed": 27, "TotalFilesMoved": 25, "TotalFilesSkipped": 1, "TotalFilesFailed": 1,
+    "TotalSizeBytes": 1010000058, "TotalSizeGB": 0.94, "TotalErrors": 1, "TotalWarnings": 0
+  }
 }
 ```
 
----
-
-## 🔧 Configuration
-
-### JSON Configuration File Example (`config.json`)
-```json
-{
-    "SourceRoot": "F:\\",
-    "PersonalFolder": "F:\\Documenten",
-    "PhotoRoot": "F:\\FotoBibliotheek",
-    "MusicRoot": "F:\\MuziekCollectie",
-    "TimeoutSeconds": 600,
-    "Parallel": true,
-    "ThrottleLimit": 8,
-    "PreserveFolderStructure": false,
-    "Extensions": {
-        "Documents": [".pdf", ".docx", ".xlsx", ".pptx"],
-        "Music": [".mp3", ".flac", ".wav"],
-        "Photos": [".jpg", ".png", ".heic", ".raw"]
-    }
-}
-```
-
-### Using Configuration Files
-```powershell
-.\FileOrganizer.ps1 -ConfigPath ".\config\production.json"
-.\DownloadOrganizer.ps1 -ConfigPath ".\config\downloads.json" -Parallel
-```
+Fatal errors are thrown (no `exit 1`), so callers can use `try`/`catch`; when run with `pwsh -File`, a thrown error still produces a non-zero exit code.
 
 ---
 
-## 📅 Automation
+## Safety
+- Run with `-WhatIf` (or `-DryRun` for `DirectoryReorder.ps1`) first and review the log.
+- Existing files are never overwritten without `-Force`; duplicate albums are moved to `Duplicates` instead of deleted.
+- Same-volume moves use `Move-Item` (a rename). Cross-volume moves copy to a temporary file, verify the size, rename it into place, and only then delete the source.
+- Test on a small, non-critical folder first.
 
-### Windows Task Scheduler Setup
+---
+
+## Automation
+
 ```powershell
-# Create scheduled task for weekly cleanup
-$action = New-ScheduledTaskAction -Execute "PowerShell.exe" `
-    -Argument "-File `"C:\Scripts\FileOrganizer.ps1`" -ConfigPath `"C:\Scripts\config.json`" -Parallel"
-
+$action = New-ScheduledTaskAction -Execute 'powershell.exe' `
+    -Argument '-NoProfile -File "C:\Scripts\DirectoryReorder.ps1" -ConfigPath "C:\Scripts\config.json"'
 $trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Sunday -At 2am
+$principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount
 
-$principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount
-
-Register-ScheduledTask -TaskName "Weekly File Organizer" `
-    -Action $action -Trigger $trigger -Principal $principal
+Register-ScheduledTask -TaskName 'Weekly Directory Reorder' -Action $action -Trigger $trigger -Principal $principal
 ```
 
-### PowerShell Scheduled Job
 ```powershell
-$jobOptions = New-ScheduledJobOption -RunElevated
-$trigger = New-JobTrigger -Weekly -At "3:00 AM" -DaysOfWeek Monday,Wednesday,Friday
-
-Register-ScheduledJob -Name "DownloadOrganizer" `
-    -FilePath "C:\Scripts\DownloadOrganizer.ps1" `
-    -ArgumentList "-ConfigPath C:\Scripts\config.json" `
-    -Trigger $trigger -ScheduledJobOption $jobOptions
+$trigger = New-JobTrigger -Weekly -At '3:00 AM' -DaysOfWeek Monday, Wednesday, Friday
+Register-ScheduledJob -Name 'MovingFiles' -FilePath 'C:\Scripts\MovingFiles.ps1' `
+    -ArgumentList @{ ConfigPath = 'C:\Scripts\config.json' } -Trigger $trigger
 ```
 
 ---
 
-## 🤝 Contributing
+## Development
 
-Contributions are welcome! Please follow these guidelines:
+```powershell
+Install-Module PSScriptAnalyzer, Pester -Scope CurrentUser -SkipPublisherCheck
 
-1. **Fork** the repository
-2. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
-3. **Commit** your changes (`git commit -m 'Add amazing feature'`)
-4. **Push** to the branch (`git push origin feature/amazing-feature`)
-5. **Open** a Pull Request
+# Static analysis (same settings as CI)
+Invoke-ScriptAnalyzer -Path . -Recurse -Settings .\PSScriptAnalyzerSettings.psd1
 
-### Development Guidelines
-- Maintain the existing coding style
-- Add comprehensive comments
-- Include error handling for new features
-- Update documentation for changes
-- Test with `-WhatIf` before submitting
+# Unit and integration tests (Pester 5)
+Invoke-Pester -Path .\tests -Output Detailed
+```
 
----
+[GitHub Actions](.github/workflows/powershell.yml) runs PSScriptAnalyzer and the Pester tests on Windows PowerShell 5.1 and PowerShell 7 for every push to `main` and every pull request.
 
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+Contributions are welcome: fork the repository, create a feature branch, make sure the analyzer and tests pass, and open a pull request.
 
 ---
+
+## License
+
+This project is licensed under the MIT License – see the [LICENSE](LICENSE) file for details.
