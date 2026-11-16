@@ -105,6 +105,17 @@ Describe 'MovingFiles.ps1' {
         Test-Path (Join-Path -Path $params.PersonalDir -ChildPath 'report.pdf') | Should -BeTrue
     }
 
+    It 'accepts legacy keys in a top-level config file' {
+        $configPath = Join-Path -Path $root -ChildPath 'legacy.json'
+        @{ SourceDir = $params.SourceDir; PersonalDir = $params.PersonalDir; MusicDir = $params.MusicDir; FotosDir = $params.PhotosDir } |
+            ConvertTo-Json | Set-Content -LiteralPath $configPath
+
+        & (Join-Path -Path $repoRoot -ChildPath 'MovingFiles.ps1') -ConfigPath $configPath -LogPath $params.LogPath `
+            -ReportPath $params.ReportPath -InformationAction SilentlyContinue -WarningAction SilentlyContinue
+
+        Test-Path (Join-Path -Path $params.PhotosDir -ChildPath 'photo.jpg') | Should -BeTrue
+    }
+
     It 'changes nothing with -WhatIf' {
         & (Join-Path -Path $repoRoot -ChildPath 'MovingFiles.ps1') @params -WhatIf
         @(Get-ChildItem -LiteralPath $params.SourceDir -Recurse -File).Count | Should -Be 5
@@ -144,6 +155,15 @@ Describe 'DirectoryReorder.ps1' {
         $report.Summary.TotalSizeBytes | Should -Be $expectedBytes
         $report.Summary.TotalSizeGB | Should -Be ([Math]::Round($expectedBytes / 1GB, 2))
         $report.Summary.TotalErrors | Should -Be 0
+    }
+
+    It 'accepts the legacy config keys' {
+        $configPath = Join-Path -Path $TestDrive -ChildPath "$([guid]::NewGuid().ToString('N')).json"
+        @{ SourceRoot = $root; PersonalFolder = $params.PersonalDir; PhotoRoot = $params.PhotosDir; MusicRoot = $params.MusicDir } |
+            ConvertTo-Json | Set-Content -LiteralPath $configPath
+        & (Join-Path -Path $repoRoot -ChildPath 'DirectoryReorder.ps1') -ConfigPath $configPath -LogPath $params.LogPath `
+            -ReportPath $params.ReportPath -InformationAction SilentlyContinue -WarningAction SilentlyContinue
+        Test-Path (Join-Path -Path $params.PersonalDir -ChildPath 'paper.tex') | Should -BeTrue
     }
 
     It 'accepts the legacy parameter names' {

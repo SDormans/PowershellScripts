@@ -166,6 +166,10 @@ function Resolve-Setting {
         [Parameter(Mandatory = $false)]
         [object]$Default = $null,
 
+        # Legacy config keys accepted for this setting (parameter aliases do not apply to JSON keys).
+        [Parameter(Mandatory = $false)]
+        [string[]]$Alias = @(),
+
         [Parameter(Mandatory = $false)]
         [switch]$Required
     )
@@ -174,8 +178,13 @@ function Resolve-Setting {
     if (@($BoundParameters.Keys) -contains $Name) {
         $value = $BoundParameters[$Name]
     }
-    elseif ((@($Config.Keys) -contains $Name) -and $null -ne $Config[$Name] -and "$($Config[$Name])" -ne '') {
-        $value = $Config[$Name]
+    else {
+        foreach ($key in @($Name) + $Alias) {
+            if ((@($Config.Keys) -contains $key) -and $null -ne $Config[$key] -and "$($Config[$key])" -ne '') {
+                $value = $Config[$key]
+                break
+            }
+        }
     }
 
     if ($Required -and ($null -eq $value -or "$value" -eq '')) {

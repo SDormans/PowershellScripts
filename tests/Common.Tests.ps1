@@ -106,6 +106,11 @@ Describe 'Import-ScriptConfig and Resolve-Setting' {
         Test-Bound | Should -Be 'cfg'
     }
 
+    It 'accepts legacy config keys via -Alias' {
+        Resolve-Setting -Name 'PhotosDir' -Alias 'FotosDir', 'PhotoRoot' -Config @{ PhotoRoot = 'legacy' } | Should -Be 'legacy'
+        Resolve-Setting -Name 'PhotosDir' -Alias 'FotosDir' -Config @{ PhotosDir = 'new'; FotosDir = 'old' } | Should -Be 'new'
+    }
+
     It 'falls back to the default and throws for missing required settings' {
         Resolve-Setting -Name 'Missing' -Default 7 | Should -Be 7
         { Resolve-Setting -Name 'Missing' -Required } | Should -Throw "*'Missing' is required*"

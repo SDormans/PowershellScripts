@@ -106,10 +106,10 @@ if ($DryRun) {
 #region Configuration
 
 $config = Import-ScriptConfig -Path $ConfigPath -Section 'DirectoryReorder'
-$SourceDir = Resolve-Setting -Name 'SourceDir' -BoundParameters $PSBoundParameters -Config $config -Required
-$PersonalDir = Resolve-Setting -Name 'PersonalDir' -BoundParameters $PSBoundParameters -Config $config -Required
-$PhotosDir = Resolve-Setting -Name 'PhotosDir' -BoundParameters $PSBoundParameters -Config $config -Required
-$MusicDir = Resolve-Setting -Name 'MusicDir' -BoundParameters $PSBoundParameters -Config $config -Required
+$SourceDir = Resolve-Setting -Name 'SourceDir' -Alias 'SourceRoot' -BoundParameters $PSBoundParameters -Config $config -Required
+$PersonalDir = Resolve-Setting -Name 'PersonalDir' -Alias 'PersonalFolder' -BoundParameters $PSBoundParameters -Config $config -Required
+$PhotosDir = Resolve-Setting -Name 'PhotosDir' -Alias 'PhotoRoot' -BoundParameters $PSBoundParameters -Config $config -Required
+$MusicDir = Resolve-Setting -Name 'MusicDir' -Alias 'MusicRoot' -BoundParameters $PSBoundParameters -Config $config -Required
 $TimeoutSeconds = Resolve-Setting -Name 'TimeoutSeconds' -BoundParameters $PSBoundParameters -Config $config -Default $TimeoutSeconds
 
 $OthersDir = Join-Path $PhotosDir 'Others'
