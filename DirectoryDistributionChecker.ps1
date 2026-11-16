@@ -130,7 +130,7 @@ function Get-DirectoryTreeStat {
 
     $rootInfo = Get-Item -LiteralPath $RootPath -Force -ErrorAction Stop
     # Ordinal keys: on case-sensitive file systems 'Foo' and 'foo' are different directories.
-    $entries = New-Object System.Collections.Hashtable ([System.StringComparer]::Ordinal)
+    $entries = New-Object 'System.Collections.Generic.Dictionary[string,object]' ([System.StringComparer]::Ordinal)
     $entries[$rootInfo.FullName] = Initialize-DirectoryEntry -FullName $rootInfo.FullName -Parent $null -Depth 0
 
     $pending = New-Object 'System.Collections.Generic.Stack[System.IO.DirectoryInfo]'
