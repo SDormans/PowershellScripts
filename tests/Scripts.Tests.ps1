@@ -205,6 +205,18 @@ Describe 'DirectoryDistributionChecker.ps1' {
         ($result | Where-Object Directory -like '*deep').FileCount | Should -Be 1
     }
 
+    It 'keeps directories that differ only by case apart on case-sensitive file systems' -Skip:([System.IO.Path]::DirectorySeparatorChar -eq '\') {
+        $root = Join-Path -Path $TestDrive -ChildPath 'ddc-case'
+        Add-TestFile ([System.IO.Path]::Combine($root, 'Dir', 'a.txt')) ('a' * 10)
+        Add-TestFile ([System.IO.Path]::Combine($root, 'dir', 'b.txt')) ('b' * 20)
+
+        $result = & (Join-Path -Path $repoRoot -ChildPath 'DirectoryDistributionChecker.ps1') -Path $root -PassThru `
+            -LogPath (Join-Path -Path $TestDrive -ChildPath 'ddc-case.log') -InformationAction SilentlyContinue
+
+        ($result | Where-Object { $_.Directory -ceq (Join-Path -Path $root -ChildPath 'Dir') }).SizeBytes | Should -Be 10
+        ($result | Where-Object { $_.Directory -ceq (Join-Path -Path $root -ChildPath 'dir') }).SizeBytes | Should -Be 20
+    }
+
     It 'exports a JSON report' {
         $root = Join-Path -Path $TestDrive -ChildPath 'ddc-export'
         Add-TestFile (Join-Path -Path $root -ChildPath 'a.txt')
